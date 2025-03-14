@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wiggly String Mouse Follower</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #222;
+    }
+    canvas {
+      display: block;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+
+  <script>
+    // Canvas setup
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Set canvas dimensions
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+    
+    // Mouse position
+    let mouseX = canvas.width / 2;
+    let mouseY = canvas.height / 2;
+    
+    // Track mouse movement
+    window.addEventListener('mousemove', function(e) {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    });
+    
+    // Points for the string
+    const points = [];
+    const maxPoints = 100; // Longer string
+    
+    // Dots array
+    const dots = [];
+    const dotColors = ['#FFF070', '#FF9F50', '#92FF71', '#FF77D9']; // Brighter Yellow, Orange, Green, Pink
+    
+    // Animation time for wiggle effect
+    let time = 0;
+    
+    // Noise function for wiggle (simplified perlin-like noise)
+    function noise(x) {
+      return Math.sin(x * 0.3) * Math.cos(x * 0.1) * Math.sin(x * 0.5);
+    }
+    
+    // Background circles
+    const bgCircles = [];
+    const numBgCircles = 15; // Number of background circles
+    
+    // Initialize background circles
+    function initBackgroundCircles() {
+      for (let i = 0; i < numBgCircles; i++) {
+        bgCircles.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          radius: 50 + Math.random() * 150, // Large circles between 50px and 200px
+          speedX: (Math.random() - 0.5) * 0.5, // Very slow movement
+          speedY: (Math.random() - 0.5) * 0.5,
+          opacity: 0.1 + Math.random() * 0.2 // Subtle opacity
+        });
+      }
+    }
+    
+    // Function to draw and update background circles
+    function drawBackgroundCircles() {
+      for (let i = 0; i < bgCircles.length; i++) {
+        const circle = bgCircles[i];
+        
+        // Draw circle
+        ctx.beginPath();
+        ctx.arc(circle.x, circle.y, circle.radius, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(50, 50, 50, ${circle.opacity})`;
+        ctx.fill();
+        
+        // Update circle position
+        circle.x += circle.speedX;
+        circle.y += circle.speedY;
+        
+        // Wrap around edges
+        if (circle.x < -circle.radius) circle.x = canvas.width + circle.radius;
+        if (circle.x > canvas.width + circle.radius) circle.x = -circle.radius;
+        if (circle.y < -circle.radius) circle.y = canvas.height + circle.radius;
+        if (circle.y > canvas.height + circle.radius) circle.y = -circle.radius;
+      }
+    }
+    
+    // Initialize points
+    for (let i = 0; i < maxPoints; i++) {
+      points.push({
+        x: canvas.width / 2,
+        y: canvas.height / 2,
+        age: i, // Adding age to track how old each point is
+        wiggleOffset: Math.random() * 10 // Random offset for wiggle effect
+      });
+    }
+    
+    // Initialize background
+    initBackgroundCircles();
+    
+    // Main animation function
+    function animate() {
+      // Clear canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Increment time for wiggle effect
+      time += 0.1;
+      
+      // Draw and update background circles
+      drawBackgroundCircles();
+      
+      // Update points - follow the mouse with delay and add wiggle
+      points.unshift({ 
+        x: mouseX, 
+        y: mouseY, 
+        age: 0,
+        wiggleOffset: Math.random() * 10 // Random offset for varied wiggle effect
+      });
+      
+      // Update all points' age
+      for (let i = 0; i < points.length; i++) {
+        points[i].age++;
+      }
+      
+      // Remove oldest points
+      if (points.length > maxPoints) {
+        points.pop();
+      }
+      
+      // Apply enhanced wiggle effect to create more pronounced curves
+      for (let i = 5; i < points.length; i++) {
+        // Calculate direction vector to the previous point
+        const dx = points[i-1].x - points[i].x;
+        const dy = points[i-1].y - points[i].y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        
+        // Skip if points are too close (avoid division by zero)
+        if (dist < 0.01) continue;
+        
+        // Calculate perpendicular direction
+        const perpX = -dy / dist;
+        const perpY = dx / dist;
+        
+        // Enhanced wiggle effect that creates more pronounced spins
+        // Use multiple sine waves of different frequencies for more complex motion
+        const segmentPosition = i / points.length; // Position along the string (0-1)
+        
+        // Primary wiggle - gets more intense further from cursor
+        const primaryWiggleAmount = 3 + segmentPosition * 10;
+        const primaryWiggle = Math.sin((time + i * 0.3 + points[i].wiggleOffset) * 0.05) * primaryWiggleAmount;
+        
+        // Secondary wiggle - higher frequency creates more bends
+        const secondaryWiggleAmount = segmentPosition * 6;
+        const secondaryWiggle = Math.sin((time * 0.5 + i * 0.7) * 0.2) * secondaryWiggleAmount;
+        
+        // Third wiggle component - create occasional "spin-outs"
+        const spinOutFactor = Math.sin(time * 0.03 + segmentPosition * 8) * Math.sin(time * 0.02);
+        const spinOutAmount = segmentPosition * 15 * Math.max(0, spinOutFactor);
+        
+        // Combine all wiggle components
+        const totalWiggle = primaryWiggle + secondaryWiggle + spinOutAmount;
+        
+        // Add jittery effect - more pronounced further from cursor
+        const jitterFactor = segmentPosition * 0.8;
+        const jitter = noise(time * 2 + i) * jitterFactor;
+        
+        // Apply wiggle perpendicular to the path direction
+        points[i].x += perpX * totalWiggle + (Math.random() - 0.5) * jitter;
+        points[i].y += perpY * totalWiggle + (Math.random() - 0.5) * jitter;
+      }
+      
+      // Draw the string with fading effect and smooth curves
+      ctx.lineWidth = 8;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      
+      // Function to draw a smooth curve through points
+      function drawSmoothCurve(points, startIndex, count, opacity) {
+        if (count < 3) return; // Need at least 3 points for a smooth curve
+        
+        ctx.beginPath();
+        ctx.moveTo(points[startIndex].x, points[startIndex].y);
+        
+        // Use Catmull-Rom spline to create smooth curves between points
+        for (let i = startIndex; i < startIndex + count - 2; i++) {
+          const p0 = i > startIndex ? points[i-1] : points[i];
+          const p1 = points[i];
+          const p2 = points[i+1];
+          const p3 = i < startIndex + count - 2 ? points[i+2] : points[i+1];
+          
+          // Calculate tension points for curve (Catmull-Rom spline)
+          const tension = 0.4; // Higher values make sharper curves (0.0-1.0)
+          
+          for (let t = 0; t <= 1; t += 0.1) {
+            // Catmull-Rom calculations
+            const t2 = t * t;
+            const t3 = t2 * t;
+            
+            // Catmull-Rom coefficients
+            const c0 = -tension * t + 2 * tension * t2 - tension * t3;
+            const c1 = 1 + (tension - 3) * t2 + (2 - tension) * t3;
+            const c2 = tension * t + (3 - 2 * tension) * t2 + (tension - 2) * t3;
+            const c3 = -tension * t2 + tension * t3;
+            
+            // Calculate point on curve
+            const x = c0 * p0.x + c1 * p1.x + c2 * p2.x + c3 * p3.x;
+            const y = c0 * p0.y + c1 * p1.y + c2 * p2.y + c3 * p3.y;
+            
+            ctx.lineTo(x, y);
+          }
+        }
+        
+        // Set style and draw
+        ctx.strokeStyle = `rgba(222, 184, 80, ${opacity})`;
+        ctx.stroke();
+      }
+      
+      // Draw the string in segments with fading opacity
+      const segmentLength = 15; // Number of points per segment
+      for (let i = 0; i < points.length - segmentLength; i += 5) {
+        const opacity = 1 - (i / (points.length - segmentLength)); // Fade from 1 to 0
+        drawSmoothCurve(points, i, Math.min(segmentLength, points.length - i), opacity);
+      }
+      
+      // Create a new dot randomly (4% chance per frame - slightly reduced for longer string)
+      if (Math.random() < 0.04 && points.length > 10) {
+        // Find a position that doesn't already have a dot nearby
+        let validPositionFound = false;
+        let attempts = 0;
+        let pointIndex;
+        
+        while (!validPositionFound && attempts < 5) {
+          pointIndex = 5 + Math.floor(Math.random() * (points.length - 10));
+          
+          // Check if there's already a dot at this position or very close by
+          let tooClose = false;
+          for (const existingDot of dots) {
+            if (Math.abs(existingDot.pointIndex - pointIndex) < 3) {
+              tooClose = true;
+              break;
+            }
+          }
+          
+          if (!tooClose) {
+            validPositionFound = true;
+          }
+          
+          attempts++;
+        }
+        
+        // Only create a dot if we found a valid position
+        if (validPositionFound) {
+          const randomSize = 15 + Math.random() * 25;
+          const randomColor = dotColors[Math.floor(Math.random() * dotColors.length)];
+          
+          dots.push({
+            pointIndex: pointIndex, // Store the point index instead of fixed coordinates
+            size: 0,
+            targetSize: randomSize,
+            color: randomColor,
+            growing: true
+          });
+        }
+      }
+      
+      // Update and draw dots - brighter colors against dark background
+      for (let i = dots.length - 1; i >= 0; i--) {
+        const dot = dots[i];
+        
+        // Update dot size - growing or shrinking
+        if (dot.growing) {
+          dot.size += (dot.targetSize - dot.size) * 0.1;
+          if (dot.size >= dot.targetSize * 0.95) {
+            dot.growing = false;
+          }
+        }
+        
+        // Make sure the point index is still valid
+        if (dot.pointIndex >= points.length) {
+          dots.splice(i, 1);
+          continue;
+        }
+        
+        // Get dot position from its point
+        const dotPoint = points[dot.pointIndex];
+        
+        // Calculate opacity based on position in the trail
+        // Dots near the end of the trail will fade out
+        const fadePosition = dot.pointIndex / points.length;
+        const opacity = fadePosition > 0.7 ? 1 - ((fadePosition - 0.7) / 0.3) : 1;
+        
+        // Draw the dot with proper opacity and glow effect
+        // First draw a subtle glow
+        ctx.beginPath();
+        ctx.arc(dotPoint.x, dotPoint.y, dot.size / 1.5, 0, Math.PI * 2);
+        
+        // Apply color with opacity
+        const color = dot.color;
+        const rgbValues = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(color);
+        const r = parseInt(rgbValues[1], 16);
+        const g = parseInt(rgbValues[2], 16);
+        const b = parseInt(rgbValues[3], 16);
+        
+        // Draw glow
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${opacity * 0.3})`;
+        ctx.fill();
+        
+        // Draw main dot
+        ctx.beginPath();
+        ctx.arc(dotPoint.x, dotPoint.y, dot.size / 2, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${opacity})`;
+        ctx.fill();
+        
+        // Remove dots that are nearly transparent
+        if (opacity < 0.1) {
+          dots.splice(i, 1);
+        }
+      }
+      
+      // Continue animation
+      requestAnimationFrame(animate);
+    }
+    
+    // Start animation
+    animate();
+  </script>
+</body>
+</html>
